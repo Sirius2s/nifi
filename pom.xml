@@ -82,7 +82,7 @@
         <connection>scm:git:git://git.apache.org/nifi.git</connection>
         <developerConnection>scm:git:https://git-wip-us.apache.org/repos/asf/nifi.git</developerConnection>
         <url>https://git-wip-us.apache.org/repos/asf?p=nifi.git</url>
-        <tag>nifi-1.28.0-RC1</tag>
+        <tag>nifi-1.28.1-M25S3</tag>
     </scm>
     <issueManagement>
         <system>JIRA</system>
@@ -100,7 +100,7 @@
         <node.version>v16.13.2</node.version>
         <frontend.mvn.plugin.version>1.14.2</frontend.mvn.plugin.version>
         <nifi.nar.maven.plugin.version>1.5.1</nifi.nar.maven.plugin.version>
-        <project.build.outputTimestamp>1731654219</project.build.outputTimestamp>
+        <project.build.outputTimestamp>1731653530</project.build.outputTimestamp>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <inceptionYear>2014</inceptionYear>
@@ -128,7 +128,13 @@
         <ranger.solr.version>8.11.3</ranger.solr.version>
         <jetty.version>9.4.56.v20240826</jetty.version>
         <jackson.bom.version>2.18.1</jackson.bom.version>
+        
+        <!-- 修改MINA版本为2.1.10以修复CVE-2024-52046 -->
+        <org.apache.mina.version>2.1.10</org.apache.mina.version>
+        
         <avro.version>1.11.4</avro.version>
+        <!-- 升级Parquet版本至1.15.1修复CVE-2025-30065 -->
+        <parquet.version>1.15.1</parquet.version>
         <jaxb.runtime.version>2.3.9</jaxb.runtime.version>
         <javax.annotation-api.version>1.3.2</javax.annotation-api.version>
         <jakarta.xml.bind-api.version>2.3.3</jakarta.xml.bind-api.version>
@@ -153,6 +159,11 @@
         <h2.version>2.2.224</h2.version>
         <zookeeper.version>3.9.3</zookeeper.version>
         <caffeine.version>2.9.3</caffeine.version>
+        <!-- 新增guava版本属性以修复CVE-2023-2976 -->
+        <guava.version>33.3.1-jre</guava.version>
+        <!-- 新增Kafka相关版本属性以修复CVE-2023-25194 -->
+        <kafka.version>3.7.0</kafka.version>
+<!--        <kafka.streams.version>3.7.0</kafka.streams.version>-->
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -706,6 +717,12 @@
                 <artifactId>caffeine</artifactId>
                 <version>${caffeine.version}</version>
             </dependency>
+            <!-- 添加 mina 依赖管理 -->
+            <dependency>
+                <groupId>org.apache.mina</groupId>
+                <artifactId>mina-core</artifactId>
+                <version>${org.apache.mina.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.apache.zookeeper</groupId>
                 <artifactId>zookeeper</artifactId>
@@ -738,6 +755,29 @@
                 <groupId>org.apache.nifi</groupId>
                 <artifactId>nifi-utils</artifactId>
                 <version>1.28.2-SNAPSHOT</version>
+            </dependency>
+            <!-- 添加guava依赖管理 -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+            </dependency>
+            <!-- 添加Kafka客户端依赖管理 -->
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka-clients</artifactId>
+                <version>${kafka.version}</version>
+            </dependency>
+<!--            <dependency>-->
+<!--                <groupId>org.apache.kafka</groupId>-->
+<!--                <artifactId>kafka-streams</artifactId>-->
+<!--                <version>${kafka.streams.version}</version>-->
+<!--            </dependency>-->
+            <!-- 更新parquet-avro依赖版本 -->
+            <dependency>
+                <groupId>org.apache.parquet</groupId>
+                <artifactId>parquet-avro</artifactId>
+                <version>${parquet.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -874,7 +914,7 @@
                         <goals>deploy</goals>
                         <!--suppress
                         UnresolvedMavenProperty -->
-                        <tagNameFormat>@{project.artifactId}-@{project.version}</tagNameFormat>
+                        <tagNameFormat>@{project.artifactId}-${project.version}</tagNameFormat>
                         <pushChanges>false</pushChanges>
                         <localCheckout>true</localCheckout>
                     </configuration>
