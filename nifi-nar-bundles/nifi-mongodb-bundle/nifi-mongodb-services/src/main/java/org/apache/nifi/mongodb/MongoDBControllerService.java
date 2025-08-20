@@ -19,18 +19,11 @@ package org.apache.nifi.mongodb;
 
 import com.mongodb.ConnectionString;
 import com.mongodb.MongoClientSettings;
-import com.mongodb.client.MongoClient;
+import com.mongodb.MongoCredential;
 import com.mongodb.WriteConcern;
+import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoDatabase;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
-import javax.net.ssl.SSLContext;
 import org.apache.nifi.annotation.documentation.CapabilityDescription;
 import org.apache.nifi.annotation.documentation.Tags;
 import org.apache.nifi.annotation.lifecycle.OnDisabled;
@@ -41,8 +34,15 @@ import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.controller.AbstractControllerService;
 import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.logging.ComponentLog;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.bson.Document;
+
+import javax.net.ssl.SSLContext;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 @Tags({"mongo", "mongodb", "service"})
 @CapabilityDescription(
@@ -54,21 +54,21 @@ public class MongoDBControllerService extends AbstractControllerService implemen
 
     @OnEnabled
     public void onEnabled(final ConfigurationContext context) {
-        this.uri = getURI(context);
+        this.uri = context.getProperty(URI).evaluateAttributeExpressions().getValue();
         this.mongoClient = createClient(context, this.mongoClient);
     }
 
-    static List<PropertyDescriptor> descriptors = new ArrayList<>();
-
-    static {
-        descriptors.add(URI);
-        descriptors.add(DB_USER);
-        descriptors.add(DB_PASSWORD);
-        descriptors.add(SSL_CONTEXT_SERVICE);
-        descriptors.add(CLIENT_AUTH);
-    }
+    private static final List<PropertyDescriptor> PROPERTY_DESCRIPTORS = Collections.unmodifiableList(Arrays.asList(
+            URI,
+            DB_USER,
+            DB_PASSWORD,
+            SSL_CONTEXT_SERVICE,
+            CLIENT_AUTH,
+            WRITE_CONCERN
+    ));
 
     protected MongoClient mongoClient;
+    private String writeConcernProperty;
 
     // TODO: Remove duplicate code by refactoring shared method to accept PropertyContext
     protected MongoClient createClient(ConfigurationContext context, MongoClient existing) {
@@ -78,36 +78,44 @@ public class MongoDBControllerService extends AbstractControllerService implemen
 
         getLogger().info("Creating MongoClient");
 
+        writeConcernProperty = context.getProperty(WRITE_CONCERN).getValue();
+
         // Set up the client for secure (SSL/TLS communications) if configured to do so
-        final SSLContextService sslService = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextService.class);
+        final SSLContextProvider sslContextProvider = context.getProperty(SSL_CONTEXT_SERVICE).asControllerService(SSLContextProvider.class);
         final SSLContext sslContext;
 
-        if (sslService == null) {
+        if (sslContextProvider == null) {
             sslContext = null;
         } else {
-            sslContext = sslService.createContext();
+            sslContext = sslContextProvider.createContext();
         }
 
         try {
-            final String uri = getURI(context);
-            final MongoClientSettings.Builder builder = getClientSettings(uri, sslContext);
+            final String uri = context.getProperty(URI).evaluateAttributeExpressions().getValue();
+            final String user = context.getProperty(DB_USER).evaluateAttributeExpressions().getValue();
+            final String passw = context.getProperty(DB_PASSWORD).evaluateAttributeExpressions().getValue();
+
+            final MongoClientSettings.Builder builder = MongoClientSettings.builder();
+            final ConnectionString cs = new ConnectionString(uri);
+
+            if (user != null && passw != null) {
+                final String database = cs.getDatabase() == null ? "admin" : cs.getDatabase();
+                final MongoCredential credential = MongoCredential.createCredential(user, database, passw.toCharArray());
+                builder.credential(credential);
+            }
+
+            if (sslContext != null) {
+                builder.applyToSslSettings(sslBuilder -> sslBuilder.enabled(true).context(sslContext));
+            }
+
+            builder.applyConnectionString(cs);
+
             final MongoClientSettings clientSettings = builder.build();
             return MongoClients.create(clientSettings);
         } catch (Exception e) {
             getLogger().error("Failed to schedule {} due to {}", this.getClass().getName(), e, e);
             throw e;
         }
-    }
-
-    protected MongoClientSettings.Builder getClientSettings(final String uri, final SSLContext sslContext) {
-        final MongoClientSettings.Builder builder = MongoClientSettings.builder();
-        builder.applyConnectionString(new ConnectionString(uri));
-        if (sslContext != null) {
-            builder.applyToSslSettings(sslBuilder ->
-                    sslBuilder.enabled(true).context(sslContext)
-            );
-        }
-        return builder;
     }
 
     @OnStopped
@@ -121,25 +129,8 @@ public class MongoDBControllerService extends AbstractControllerService implemen
         }
     }
 
-    protected String getURI(final ConfigurationContext context) {
-        final String uri = context.getProperty(URI).evaluateAttributeExpressions().getValue();
-        final String user = context.getProperty(DB_USER).evaluateAttributeExpressions().getValue();
-        final String passw = context.getProperty(DB_PASSWORD).evaluateAttributeExpressions().getValue();
-        if (!uri.contains("@") && user != null && passw != null) {
-            try {
-                return uri.replaceFirst("://", "://" + URLEncoder.encode(user, StandardCharsets.UTF_8.toString()) + ":" + URLEncoder.encode(passw, StandardCharsets.UTF_8.toString()) + "@");
-            } catch (final UnsupportedEncodingException e) {
-                getLogger().warn("Failed to URL encode username and/or password. Using original URI.");
-                return uri;
-            }
-        } else {
-            return uri;
-        }
-    }
-
     @Override
-    public WriteConcern getWriteConcern(final ConfigurationContext context) {
-        final String writeConcernProperty = context.getProperty(WRITE_CONCERN).getValue();
+    public WriteConcern getWriteConcern() {
         WriteConcern writeConcern = null;
         switch (writeConcernProperty) {
             case WRITE_CONCERN_ACKNOWLEDGED:
@@ -179,7 +170,7 @@ public class MongoDBControllerService extends AbstractControllerService implemen
 
     @Override
     protected List<PropertyDescriptor> getSupportedPropertyDescriptors() {
-        return descriptors;
+        return PROPERTY_DESCRIPTORS;
     }
 
     @OnDisabled

@@ -21,13 +21,12 @@ import com.mongodb.WriteConcern;
 import com.mongodb.client.MongoDatabase;
 import org.apache.nifi.components.AllowableValue;
 import org.apache.nifi.components.PropertyDescriptor;
-import org.apache.nifi.controller.ConfigurationContext;
 import org.apache.nifi.controller.ControllerService;
 import org.apache.nifi.controller.VerifiableControllerService;
 import org.apache.nifi.expression.ExpressionLanguageScope;
 import org.apache.nifi.processor.util.StandardValidators;
 import org.apache.nifi.security.util.ClientAuth;
-import org.apache.nifi.ssl.SSLContextService;
+import org.apache.nifi.ssl.SSLContextProvider;
 import org.bson.Document;
 
 public interface MongoDBClientService extends ControllerService, VerifiableControllerService {
@@ -76,7 +75,7 @@ public interface MongoDBClientService extends ControllerService, VerifiableContr
             .displayName("Mongo URI")
             .description("MongoURI, typically of the form: mongodb://host1[:port1][,host2[:port2],...]")
             .required(true)
-            .expressionLanguageSupported(ExpressionLanguageScope.VARIABLE_REGISTRY)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .addValidator(StandardValidators.URI_VALIDATOR)
             .build();
      PropertyDescriptor DB_USER = new PropertyDescriptor.Builder()
@@ -85,7 +84,7 @@ public interface MongoDBClientService extends ControllerService, VerifiableContr
             .description("Database user name")
             .required(false)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-            .expressionLanguageSupported(ExpressionLanguageScope.VARIABLE_REGISTRY)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .build();
      PropertyDescriptor DB_PASSWORD = new PropertyDescriptor.Builder()
             .name("Password")
@@ -94,7 +93,7 @@ public interface MongoDBClientService extends ControllerService, VerifiableContr
             .required(false)
             .sensitive(true)
             .addValidator(StandardValidators.NON_EMPTY_VALIDATOR)
-            .expressionLanguageSupported(ExpressionLanguageScope.VARIABLE_REGISTRY)
+            .expressionLanguageSupported(ExpressionLanguageScope.ENVIRONMENT)
             .build();
      PropertyDescriptor SSL_CONTEXT_SERVICE = new PropertyDescriptor.Builder()
             .name("ssl-context-service")
@@ -102,7 +101,7 @@ public interface MongoDBClientService extends ControllerService, VerifiableContr
             .description("The SSL Context Service used to provide client certificate information for TLS/SSL "
                     + "connections.")
             .required(false)
-            .identifiesControllerService(SSLContextService.class)
+            .identifiesControllerService(SSLContextProvider.class)
             .build();
      PropertyDescriptor CLIENT_AUTH = new PropertyDescriptor.Builder()
             .name("ssl-client-auth")
@@ -123,14 +122,14 @@ public interface MongoDBClientService extends ControllerService, VerifiableContr
             .allowableValues(WRITE_CONCERN_ACKNOWLEDGED_VALUE, WRITE_CONCERN_UNACKNOWLEDGED_VALUE, WRITE_CONCERN_FSYNCED_VALUE,
                              WRITE_CONCERN_JOURNALED_VALUE, WRITE_CONCERN_REPLICA_ACKNOWLEDGED_VALUE, WRITE_CONCERN_MAJORITY_VALUE,
                              WRITE_CONCERN_W1_VALUE, WRITE_CONCERN_W2_VALUE, WRITE_CONCERN_W3_VALUE)
-            .defaultValue(WRITE_CONCERN_ACKNOWLEDGED)
+            .defaultValue(WRITE_CONCERN_ACKNOWLEDGED_VALUE.getValue())
             .build();
 
 
     default Document convertJson(String query) {
         return Document.parse(query);
     }
-    WriteConcern getWriteConcern(final ConfigurationContext context);
     MongoDatabase getDatabase(String name);
     String getURI();
+    WriteConcern getWriteConcern();
 }
