@@ -51,9 +51,12 @@ import org.apache.nifi.connectable.ConnectableType;
 import org.apache.nifi.controller.ScheduledState;
 import org.apache.nifi.controller.serialization.FlowEncodingVersion;
 import org.apache.nifi.controller.service.ControllerServiceState;
+import org.apache.nifi.flow.VersionedControllerService;
 import org.apache.nifi.flow.VersionedFlowCoordinates;
 import org.apache.nifi.flow.VersionedParameterContext;
 import org.apache.nifi.flow.VersionedProcessGroup;
+import org.apache.nifi.flow.VersionedProcessor;
+import org.apache.nifi.flow.VersionedPropertyDescriptor;
 import org.apache.nifi.parameter.ParameterContext;
 import org.apache.nifi.registry.client.NiFiRegistryException;
 import org.apache.nifi.registry.flow.FlowRegistryBucket;
@@ -4829,6 +4832,45 @@ public class ProcessGroupResource extends FlowUpdateResource<ProcessGroupImportE
             if (parameterContexts != null) {
                 parameterContexts.values().forEach(context -> AuthorizeParameterReference.authorizeParameterContextAddition(context, serviceFacade, authorizer, lookup, user));
             }
+            
+            // CVE-2024-56512: Authorize access to any referenced Controller Services
+            versionedFlowSnapshot.getFlowContents().getControllerServices().forEach(controllerService -> {
+                final Map<String, String> serviceProperties = controllerService.getProperties();
+                if (serviceProperties != null) {
+                    serviceProperties.forEach((propertyName, propertyValue) -> {
+                        if (propertyValue != null) {
+                            final VersionedPropertyDescriptor propertyDescriptor = controllerService.getPropertyDescriptors().get(propertyName);
+                            if (propertyDescriptor != null && propertyDescriptor.getIdentifiesControllerService()) {
+                                try {
+                                    final ComponentAuthorizable componentAuthorizable = lookup.getControllerService(propertyValue);
+                                    componentAuthorizable.getAuthorizable().authorize(authorizer, RequestAction.READ, user);
+                                } catch (final ResourceNotFoundException e) {
+                                    // Ignore if the resource is not found. The referenced service may have been deleted.
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+            
+            versionedFlowSnapshot.getFlowContents().getProcessors().forEach(processor -> {
+                final Map<String, String> processorProperties = processor.getProperties();
+                if (processorProperties != null) {
+                    processorProperties.forEach((propertyName, propertyValue) -> {
+                        if (propertyValue != null) {
+                            final VersionedPropertyDescriptor propertyDescriptor = processor.getPropertyDescriptors().get(propertyName);
+                            if (propertyDescriptor != null && propertyDescriptor.getIdentifiesControllerService()) {
+                                try {
+                                    final ComponentAuthorizable componentAuthorizable = lookup.getControllerService(propertyValue);
+                                    componentAuthorizable.getAuthorizable().authorize(authorizer, RequestAction.READ, user);
+                                } catch (final ResourceNotFoundException e) {
+                                    // Ignore if the resource is not found. The referenced service may have been deleted.
+                                }
+                            }
+                        }
+                    });
+                }
+            });
         }
     }
 
