@@ -51,11 +51,6 @@ public enum ExpressionLanguageScope {
     VARIABLE_REGISTRY("Variable Registry Only"),
 
     /**
-     * Expression language is evaluated against system and environment variables
-     */
-    ENVIRONMENT("Environment Variables Only"),
-
-    /**
      * Expression language is evaluated per flow file using attributes
      */
     FLOWFILE_ATTRIBUTES("Variable Registry and FlowFile Attributes");
