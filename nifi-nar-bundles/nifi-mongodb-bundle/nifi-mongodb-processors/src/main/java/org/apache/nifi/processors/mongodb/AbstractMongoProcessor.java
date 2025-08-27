@@ -28,6 +28,8 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import java.io.ByteArrayInputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -36,6 +38,8 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.net.ssl.SSLContext;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.nifi.annotation.lifecycle.OnScheduled;
@@ -304,6 +308,65 @@ public abstract class AbstractMongoProcessor extends AbstractProcessor {
             return context.getProperty(URI).evaluateAttributeExpressions().getValue();
         }
     }
+    
+    /**
+     * Removes sensitive information (username and password) from a MongoDB URI
+     * to prevent it from being exposed in provenance events
+     *
+     * @param uri The MongoDB URI that may contain credentials
+     * @return A sanitized URI without credentials, or the original URI if it cannot be parsed
+     */
+    protected String sanitizeURI(final String uri) {
+        if (uri == null) {
+            return null;
+        }
+        
+        try {
+            // Handle MongoDB specific URI scheme
+            if (uri.startsWith("mongodb://") || uri.startsWith("mongodb+srv://")) {
+                // Pattern to match mongodb://[username:password@]host[:port][,...]
+                Pattern pattern = Pattern.compile("(mongodb(?:\\+srv)?://)(?:[^@/]*@)?(.*)");
+                Matcher matcher = pattern.matcher(uri);
+                if (matcher.matches()) {
+                    return matcher.group(1) + matcher.group(2);
+                }
+            }
+            
+            // Try to parse as standard URI to check for embedded credentials
+            URI parsedUri = new URI(uri);
+            if (parsedUri.getUserInfo() != null) {
+                // Reconstruct URI without user info
+                String scheme = parsedUri.getScheme();
+                String host = parsedUri.getHost();
+                int port = parsedUri.getPort();
+                String path = parsedUri.getPath();
+                String query = parsedUri.getQuery();
+                String fragment = parsedUri.getFragment();
+                
+                StringBuilder sb = new StringBuilder();
+                sb.append(scheme).append("://");
+                sb.append(host);
+                if (port != -1) {
+                    sb.append(":").append(port);
+                }
+                if (path != null) {
+                    sb.append(path);
+                }
+                if (query != null) {
+                    sb.append("?").append(query);
+                }
+                if (fragment != null) {
+                    sb.append("#").append(fragment);
+                }
+                return sb.toString();
+            }
+        } catch (URISyntaxException e) {
+            getLogger().debug("Unable to parse URI for sanitization: {}", uri);
+        }
+        
+        // If we can't parse it, return as-is
+        return uri;
+    }
 
     protected WriteConcern getWriteConcern(final ProcessContext context) {
         final String writeConcernProperty = context.getProperty(WRITE_CONCERN).getValue();
@@ -352,7 +415,7 @@ public abstract class AbstractMongoProcessor extends AbstractProcessor {
         flowFile = session.importFrom(new ByteArrayInputStream(payload.getBytes(charset)), flowFile);
         flowFile = session.putAllAttributes(flowFile, extraAttributes);
         if (parent == null) {
-            session.getProvenanceReporter().receive(flowFile, getURI(context));
+            session.getProvenanceReporter().receive(flowFile, sanitizeURI(getURI(context)));
         }
         session.transfer(flowFile, rel);
     }

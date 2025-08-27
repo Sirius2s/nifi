@@ -253,7 +253,7 @@ public class GetMongo extends AbstractMongoQueryProcessor {
                     });
 
                     outgoingFlowFile = session.putAllAttributes(outgoingFlowFile, attributes);
-                    session.getProvenanceReporter().receive(outgoingFlowFile, getURI(context));
+                    session.getProvenanceReporter().receive(outgoingFlowFile, sanitizeURI(getURI(context)));
                     session.transfer(outgoingFlowFile, REL_SUCCESS);
                     sent++;
                 }
